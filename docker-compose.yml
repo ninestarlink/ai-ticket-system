@@ -1,0 +1,59 @@
+services:
+  mock-feishu:
+    build: ./mock_feishu
+    container_name: ai-ticket-mock-feishu
+    ports:
+      - "9000:9000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request;urllib.request.urlopen('http://127.0.0.1:9000/health')",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build: ./backend
+    container_name: ai-ticket-api
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: sqlite:////app/data/tickets.db
+      FEISHU_WEBHOOK_URL: ${FEISHU_WEBHOOK_URL:-http://mock-feishu:9000/webhook}
+      NOTIFY_TIMEOUT_SECONDS: ${NOTIFY_TIMEOUT_SECONDS:-10}
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      mock-feishu:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health')",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  web:
+    build: ./web
+    container_name: ai-ticket-web
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
